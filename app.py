@@ -523,7 +523,7 @@ with b3:
         fdf, names="payment_method", title="Payment method mix", hole=0.55,
         color_discrete_sequence=QUALITATIVE,
     )
-    fig8.update_traces(marker_line_color=SURFACE, marker_line_width=2, textfont_color=INK)
+    fig8.update_traces(marker_line_color=SURFACE, marker_line_width=2, textfont_color=WHITE)
     st.plotly_chart(style_fig(fig8), use_container_width=True)
 
 st.divider()
