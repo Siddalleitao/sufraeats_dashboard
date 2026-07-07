@@ -237,44 +237,60 @@ st.divider()
 st.subheader("🍽️ Cuisine breakdown — for onboarding priorities")
 cc1, cc2 = st.columns([1, 3])
 with cc1:
+    cuisine_zone_choice = st.selectbox(
+        "Zone",
+        ["All zones (current filter)"] + sorted(fdf["zone"].dropna().unique()),
+        key="cuisine_zone_filter",
+    )
     cuisine_metric = st.radio(
         "Compare cuisines by",
         ["Realised revenue", "Total orders", "Avg rating", "Cancellation rate"],
         key="cuisine_metric",
     )
     top_n = st.slider("Show top N cuisines", 3, 8, 8, key="cuisine_top_n")
-
+ 
 cuisine_df = fdf.dropna(subset=["cuisine"])
-cuisine_agg = cuisine_df.groupby("cuisine").agg(
-    realised_revenue=("platform_revenue", "sum"),
-    total_orders=("order_id", "count"),
-    avg_rating=("rating", "mean"),
-    cancel_rate=("order_status", lambda s: (s == "Cancelled").mean()),
-).reset_index()
-
-cuisine_metric_map = {
-    "Realised revenue": "realised_revenue",
-    "Total orders": "total_orders",
-    "Avg rating": "avg_rating",
-    "Cancellation rate": "cancel_rate",
-}
-ccol = cuisine_metric_map[cuisine_metric]
-cuisine_agg_sorted = cuisine_agg.sort_values(ccol, ascending=False).head(top_n)
-
-with cc2:
-    fig3 = px.bar(
-        cuisine_agg_sorted,
-        x="cuisine",
-        y=ccol,
-        color="cuisine",
-        title=f"{cuisine_metric} by cuisine",
-        labels={"cuisine": "Cuisine", ccol: cuisine_metric},
-    )
-    fig3.update_layout(showlegend=False)
-    if ccol == "cancel_rate":
-        fig3.update_yaxes(tickformat=".0%")
-    st.plotly_chart(fig3, use_container_width=True)
-
+if cuisine_zone_choice != "All zones (current filter)":
+    cuisine_df = cuisine_df[cuisine_df["zone"] == cuisine_zone_choice]
+ 
+if cuisine_df.empty:
+    with cc2:
+        st.info(f"No orders for {cuisine_zone_choice} in the current sidebar filters.")
+else:
+    cuisine_agg = cuisine_df.groupby("cuisine").agg(
+        realised_revenue=("platform_revenue", "sum"),
+        total_orders=("order_id", "count"),
+        avg_rating=("rating", "mean"),
+        cancel_rate=("order_status", lambda s: (s == "Cancelled").mean()),
+    ).reset_index()
+ 
+    cuisine_metric_map = {
+        "Realised revenue": "realised_revenue",
+        "Total orders": "total_orders",
+        "Avg rating": "avg_rating",
+        "Cancellation rate": "cancel_rate",
+    }
+    ccol = cuisine_metric_map[cuisine_metric]
+    cuisine_agg_sorted = cuisine_agg.sort_values(ccol, ascending=False).head(top_n)
+ 
+    chart_title = f"{cuisine_metric} by cuisine"
+    if cuisine_zone_choice != "All zones (current filter)":
+        chart_title += f" — {cuisine_zone_choice}"
+ 
+    with cc2:
+        fig3 = px.bar(
+            cuisine_agg_sorted,
+            x="cuisine",
+            y=ccol,
+            color="cuisine",
+            title=chart_title,
+            labels={"cuisine": "Cuisine", ccol: cuisine_metric},
+        )
+        fig3.update_layout(showlegend=False)
+        if ccol == "cancel_rate":
+            fig3.update_yaxes(tickformat=".0%")
+        st.plotly_chart(fig3, use_container_width=True)
+ 
 st.divider()
 
 # ---------------------------------------------------------------
