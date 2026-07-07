@@ -22,8 +22,72 @@ st.set_page_config(
     layout="wide",
 )
 
-PRIMARY = "#2f6f4f"
-ACCENT = "#c9683b"
+# ---------------------------------------------------------------
+# Design tokens — one place to control the whole look
+# ---------------------------------------------------------------
+INK = "#1C2331"          # primary text
+MUTED = "#5B6472"         # secondary text / axis labels
+BORDER = "#E3E1DA"        # hairlines, gridlines
+BG = "#F7F6F2"            # page background (matches .streamlit/config.toml)
+SURFACE = "#FFFFFF"       # card backgrounds
+
+PRIMARY = "#14555A"       # deep teal — zones / core metric
+PRIMARY_LIGHT = "#DCEEEA"
+ACCENT = "#C89B3C"        # saffron gold — cuisine / secondary metric
+ACCENT_LIGHT = "#F5E9CE"
+SLATE = "#3D5A73"         # muted blue — promotions
+SLATE_LIGHT = "#E4E7EB"
+DANGER = "#B5424B"        # muted brick red — cancellations/refunds only
+
+# One consistent qualitative palette for any chart colored by zone/cuisine/category
+QUALITATIVE = [PRIMARY, ACCENT, DANGER, "#4A6B5A", SLATE, "#B5762C", "#7A5C3E", "#5C4A72"]
+
+# Two-stop continuous scales, used so bar charts read as "darker = higher value"
+# instead of an arbitrary rainbow per bar
+TEAL_SCALE = [PRIMARY_LIGHT, PRIMARY]
+GOLD_SCALE = [ACCENT_LIGHT, ACCENT]
+SLATE_SCALE = [SLATE_LIGHT, SLATE]
+
+FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
+
+
+def style_fig(fig, show_colorbar=False):
+    """Apply one consistent look to every Plotly chart: font, background, gridlines."""
+    fig.update_layout(
+        font=dict(family=FONT_STACK, color=INK, size=13),
+        title_font=dict(family=FONT_STACK, color=INK, size=16),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=55, l=10, r=10, b=10),
+        legend_title_text="",
+    )
+    fig.update_xaxes(showgrid=False, linecolor=BORDER, tickfont=dict(color=MUTED))
+    fig.update_yaxes(showgrid=True, gridcolor=BORDER, zeroline=False, tickfont=dict(color=MUTED))
+    if not show_colorbar:
+        fig.update_layout(coloraxis_showscale=False)
+    return fig
+
+
+st.markdown(
+    f"""
+    <style>
+    html, body, [class*="css"] {{
+        font-family: {FONT_STACK};
+    }}
+    [data-testid="stMetricValue"] {{
+        color: {INK};
+        font-weight: 700;
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {MUTED};
+    }}
+    h1, h2, h3 {{
+        color: {INK};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------
 # Load data
@@ -114,21 +178,54 @@ if fdf.empty:
 # ---------------------------------------------------------------
 # Headline metrics
 # ---------------------------------------------------------------
+def format_aed(value):
+    """Abbreviate large AED amounts so they fit inside a metric card."""
+    if pd.isna(value):
+        return "—"
+    if abs(value) >= 1_000_000:
+        return f"AED {value/1_000_000:.2f}M"
+    if abs(value) >= 1_000:
+        return f"AED {value/1_000:.1f}K"
+    return f"AED {value:,.0f}"
+
+
 total_orders = len(fdf)
 realised_revenue = fdf["platform_revenue"].sum()
 gross_value = fdf["basket_value"].sum()
+avg_basket = fdf["basket_value"].mean()
 avg_rating = fdf["rating"].mean()
 cancel_rate = (fdf["order_status"] == "Cancelled").mean()
 refund_rate = (fdf["order_status"] == "Refunded").mean()
 avg_delivery = fdf.loc[fdf["order_channel"] == "Delivery", "delivery_time_min"].mean()
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Total orders", f"{total_orders:,}")
-c2.metric("Realised revenue", f"AED {realised_revenue:,.0f}")
-c3.metric("Gross order value", f"AED {gross_value:,.0f}")
-c4.metric("Avg rating", f"{avg_rating:.2f} / 5" if pd.notna(avg_rating) else "—")
-c5.metric("Cancellation rate", f"{cancel_rate:.1%}")
-c6.metric("Avg delivery time", f"{avg_delivery:.0f} min" if pd.notna(avg_delivery) else "—")
+row1 = st.columns(4)
+with row1[0].container(border=True):
+    st.metric("Total orders", f"{total_orders:,}")
+with row1[1].container(border=True):
+    st.metric(
+        "Realised revenue", format_aed(realised_revenue),
+        help=f"Exact: AED {realised_revenue:,.0f}",
+    )
+with row1[2].container(border=True):
+    st.metric(
+        "Gross order value", format_aed(gross_value),
+        help=f"Exact: AED {gross_value:,.0f}",
+    )
+with row1[3].container(border=True):
+    st.metric(
+        "Avg basket value", format_aed(avg_basket),
+        help=f"Exact: AED {avg_basket:,.2f}" if pd.notna(avg_basket) else None,
+    )
+
+row2 = st.columns(4)
+with row2[0].container(border=True):
+    st.metric("Avg rating", f"{avg_rating:.2f} / 5" if pd.notna(avg_rating) else "—")
+with row2[1].container(border=True):
+    st.metric("Cancellation rate", f"{cancel_rate:.1%}")
+with row2[2].container(border=True):
+    st.metric("Refund rate", f"{refund_rate:.1%}")
+with row2[3].container(border=True):
+    st.metric("Avg delivery time", f"{avg_delivery:.0f} min" if pd.notna(avg_delivery) else "—")
 
 st.caption(
     "**Realised revenue** = commission on delivered orders (net of discount) + delivery fees. "
@@ -173,15 +270,17 @@ with zc2:
         zone_agg_sorted,
         x="zone",
         y=col,
-        color="zone",
+        color=col,
+        color_continuous_scale=TEAL_SCALE,
         text_auto=".2s" if unit != "%" else ".1%",
         title=f"{zone_metric} by zone",
         labels={"zone": "Zone", col: zone_metric},
     )
-    fig.update_layout(showlegend=False, yaxis_title=zone_metric)
+    fig.update_traces(textfont_color=INK, marker_line_width=0)
+    fig.update_layout(yaxis_title=zone_metric, xaxis_title=None)
     if unit == "%":
         fig.update_yaxes(tickformat=".0%")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(style_fig(fig), use_container_width=True)
 
 st.caption(
     "💡 Tip: switch the metric on the left. A zone that tops 'Gross order value' "
@@ -216,14 +315,16 @@ with tc2:
         title=f"{trend_metric} by {granularity.lower()}",
         labels={"date": "Date", trend_col: trend_metric},
     )
-    fig2.update_traces(line_color=PRIMARY)
+    fig2.update_traces(line_color=PRIMARY, marker_color=PRIMARY, line_width=2.5)
     # Highlight Ramadan 2025 window if it's in view
     fig2.add_vrect(
         x0="2025-03-01", x1="2025-03-30",
-        fillcolor="orange", opacity=0.12, line_width=0,
+        fillcolor=ACCENT, opacity=0.15, line_width=0,
         annotation_text="Ramadan 2025", annotation_position="top left",
+        annotation_font_color=MUTED,
     )
-    st.plotly_chart(fig2, use_container_width=True)
+    fig2.update_layout(xaxis_title=None)
+    st.plotly_chart(style_fig(fig2), use_container_width=True)
 
 st.caption(
     "The shaded band marks Ramadan 2025 (~1–30 March) — the demand shift here "
@@ -248,11 +349,11 @@ with cc1:
         key="cuisine_metric",
     )
     top_n = st.slider("Show top N cuisines", 3, 8, 8, key="cuisine_top_n")
- 
+
 cuisine_df = fdf.dropna(subset=["cuisine"])
 if cuisine_zone_choice != "All zones (current filter)":
     cuisine_df = cuisine_df[cuisine_df["zone"] == cuisine_zone_choice]
- 
+
 if cuisine_df.empty:
     with cc2:
         st.info(f"No orders for {cuisine_zone_choice} in the current sidebar filters.")
@@ -263,7 +364,7 @@ else:
         avg_rating=("rating", "mean"),
         cancel_rate=("order_status", lambda s: (s == "Cancelled").mean()),
     ).reset_index()
- 
+
     cuisine_metric_map = {
         "Realised revenue": "realised_revenue",
         "Total orders": "total_orders",
@@ -272,25 +373,27 @@ else:
     }
     ccol = cuisine_metric_map[cuisine_metric]
     cuisine_agg_sorted = cuisine_agg.sort_values(ccol, ascending=False).head(top_n)
- 
+
     chart_title = f"{cuisine_metric} by cuisine"
     if cuisine_zone_choice != "All zones (current filter)":
         chart_title += f" — {cuisine_zone_choice}"
- 
+
     with cc2:
         fig3 = px.bar(
             cuisine_agg_sorted,
             x="cuisine",
             y=ccol,
-            color="cuisine",
+            color=ccol,
+            color_continuous_scale=GOLD_SCALE,
             title=chart_title,
             labels={"cuisine": "Cuisine", ccol: cuisine_metric},
         )
-        fig3.update_layout(showlegend=False)
+        fig3.update_traces(marker_line_width=0)
+        fig3.update_layout(xaxis_title=None, yaxis_title=cuisine_metric)
         if ccol == "cancel_rate":
             fig3.update_yaxes(tickformat=".0%")
-        st.plotly_chart(fig3, use_container_width=True)
- 
+        st.plotly_chart(style_fig(fig3), use_container_width=True)
+
 st.divider()
 
 # ---------------------------------------------------------------
@@ -317,10 +420,10 @@ with dc2:
             x="delivery_time_min",
             nbins=40,
             title="Delivery time distribution (minutes)",
-            color_discrete_sequence=[ACCENT],
+            color_discrete_sequence=[SLATE],
         )
         fig4.update_layout(xaxis_title="Delivery time (min)", yaxis_title="Orders")
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(style_fig(fig4), use_container_width=True)
     elif view == "Rating distribution":
         fig4 = px.histogram(
             view_df.dropna(subset=["rating"]),
@@ -330,7 +433,7 @@ with dc2:
             color_discrete_sequence=[PRIMARY],
         )
         fig4.update_layout(xaxis_title="Rating (1-5)", yaxis_title="Orders")
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(style_fig(fig4), use_container_width=True)
     else:
         zr = view_df.dropna(subset=["zone"]).groupby("zone").agg(
             avg_delivery_time=("delivery_time_min", "mean"),
@@ -343,10 +446,12 @@ with dc2:
             y="avg_rating",
             size="total_orders",
             color="zone",
+            color_discrete_sequence=QUALITATIVE,
             title="Avg delivery time vs avg rating, by zone (bubble size = orders)",
             labels={"avg_delivery_time": "Avg delivery time (min)", "avg_rating": "Avg rating"},
         )
-        st.plotly_chart(fig4, use_container_width=True)
+        fig4.update_traces(marker_line_width=0)
+        st.plotly_chart(style_fig(fig4), use_container_width=True)
 
 st.divider()
 
@@ -383,12 +488,14 @@ else:
             promo_agg.sort_values(pcol, ascending=False),
             x="promo_code",
             y=pcol,
-            color="promo_code",
+            color=pcol,
+            color_continuous_scale=SLATE_SCALE,
             title=f"{promo_metric} by promo code",
             labels={"promo_code": "Promo code", pcol: promo_metric},
         )
-        fig5.update_layout(showlegend=False)
-        st.plotly_chart(fig5, use_container_width=True)
+        fig5.update_traces(marker_line_width=0)
+        fig5.update_layout(xaxis_title=None, yaxis_title=promo_metric)
+        st.plotly_chart(style_fig(fig5), use_container_width=True)
 
 st.divider()
 
@@ -399,19 +506,25 @@ st.subheader("👥 Customer behaviour")
 b1, b2, b3 = st.columns(3)
 with b1:
     fig6 = px.pie(
-        fdf, names="customer_type", title="New vs Repeat customers", hole=0.45,
+        fdf, names="customer_type", title="New vs Repeat customers", hole=0.55,
+        color_discrete_sequence=QUALITATIVE,
     )
-    st.plotly_chart(fig6, use_container_width=True)
+    fig6.update_traces(marker_line_color=SURFACE, marker_line_width=2, textfont_color=INK)
+    st.plotly_chart(style_fig(fig6), use_container_width=True)
 with b2:
     fig7 = px.pie(
-        fdf, names="order_channel", title="Order channel mix", hole=0.45,
+        fdf, names="order_channel", title="Order channel mix", hole=0.55,
+        color_discrete_sequence=QUALITATIVE,
     )
-    st.plotly_chart(fig7, use_container_width=True)
+    fig7.update_traces(marker_line_color=SURFACE, marker_line_width=2, textfont_color=INK)
+    st.plotly_chart(style_fig(fig7), use_container_width=True)
 with b3:
     fig8 = px.pie(
-        fdf, names="payment_method", title="Payment method mix", hole=0.45,
+        fdf, names="payment_method", title="Payment method mix", hole=0.55,
+        color_discrete_sequence=QUALITATIVE,
     )
-    st.plotly_chart(fig8, use_container_width=True)
+    fig8.update_traces(marker_line_color=SURFACE, marker_line_width=2, textfont_color=INK)
+    st.plotly_chart(style_fig(fig8), use_container_width=True)
 
 st.divider()
 
