@@ -199,7 +199,7 @@ with tc1:
     granularity = st.radio("Group by", ["Day", "Week", "Month"], key="granularity")
     trend_metric = st.radio("Show", ["Total orders", "Realised revenue"], key="trend_metric")
 
-freq_map = {"Day": "D", "Week": "W", "Month": "M"}
+freq_map = {"Day": "D", "Week": "W", "Month": "ME"}
 trend_df = fdf.set_index("date").resample(freq_map[granularity]).agg(
     total_orders=("order_id", "count"),
     realised_revenue=("platform_revenue", "sum"),
