@@ -242,7 +242,8 @@ zc1, zc2 = st.columns([1, 3])
 with zc1:
     zone_metric = st.radio(
         "Compare zones by",
-        ["Realised revenue", "Gross order value", "Total orders", "Cancellation rate", "Avg delivery time"],
+        ["Realised revenue", "Gross order value", "Total orders", "Cancellation rate",
+         "Avg delivery time", "Revenue per Restaurant"],
         key="zone_metric",
     )
 
@@ -253,7 +254,9 @@ zone_agg = zone_df.groupby("zone").agg(
     total_orders=("order_id", "count"),
     cancel_rate=("order_status", lambda s: (s == "Cancelled").mean()),
     avg_delivery_time=("delivery_time_min", "mean"),
+    n_restaurants=("restaurant_id", "nunique"),
 ).reset_index()
+zone_agg["revenue_per_restaurant"] = zone_agg["realised_revenue"] / zone_agg["n_restaurants"]
 
 metric_map = {
     "Realised revenue": ("realised_revenue", "AED"),
@@ -261,6 +264,7 @@ metric_map = {
     "Total orders": ("total_orders", "orders"),
     "Cancellation rate": ("cancel_rate", "%"),
     "Avg delivery time": ("avg_delivery_time", "min"),
+    "Revenue per Restaurant": ("revenue_per_restaurant", "AED"),
 }
 col, unit = metric_map[zone_metric]
 zone_agg_sorted = zone_agg.sort_values(col, ascending=False)
@@ -285,7 +289,9 @@ with zc2:
 st.caption(
     "💡 Tip: switch the metric on the left. A zone that tops 'Gross order value' "
     "doesn't always top 'Realised revenue' — that gap is exactly what a naive "
-    "'biggest zone wins' decision would miss."
+    "'biggest zone wins' decision would miss. 'Revenue per Restaurant' is a "
+    "different lens again: it shows whether a zone's revenue comes from genuinely "
+    "strong individual restaurants, or just from having a lot of them."
 )
 st.divider()
 
